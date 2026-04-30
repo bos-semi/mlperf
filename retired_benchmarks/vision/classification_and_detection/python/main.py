@@ -187,6 +187,47 @@ SUPPORTED_PROFILES = {
         "data-format": "NHWC",
         "model-name": "ssd-resnet34",
     },
+    # ttnn
+    "resnet50-ttnn-trace": {
+        "inputs": "image",
+        "outputs": "output",
+        "dataset": "imagenet_pytorch",
+        "backend": "resnet50-ttnn-trace",
+        "model-name": "resnet50",
+        "max-batchsize": int(os.environ.get("TTNN_BATCH_SIZE", "4")),
+    },
+    "resnet50-ttnn-trace-2cq": {
+        "inputs": "image",
+        "outputs": "output",
+        "dataset": "imagenet_pytorch",
+        "backend": "resnet50-ttnn-trace-2cq",
+        "model-name": "resnet50",
+        "max-batchsize": int(os.environ.get("TTNN_BATCH_SIZE", "4")),
+    },
+    "vit-ttnn-trace": {
+        "inputs": "image",
+        "outputs": "output",
+        "dataset": "imagenet_pytorch",
+        "backend": "vit-ttnn-trace",
+        "model-name": "vit",
+        "max-batchsize": int(os.environ.get("TTNN_BATCH_SIZE", "5")),
+    },
+    "vit-ttnn-trace-2cq": {
+        "inputs": "image",
+        "outputs": "output",
+        "dataset": "imagenet_pytorch",
+        "backend": "vit-ttnn-trace-2cq",
+        "model-name": "vit",
+        "max-batchsize": int(os.environ.get("TTNN_BATCH_SIZE", "5")),
+    },
+    "yolov8s-ttnn-trace": {
+        "inputs": "image",
+        "outputs": "boxes,labels,scores",
+        "dataset": "coco-300",
+        "backend": "yolov8s-ttnn-trace",
+        "model-name": "yolov8s",
+        "max-batchsize": int(os.environ.get("TTNN_BATCH_SIZE", "1")),
+    },
 }
 
 SCENARIO_MAP = {
@@ -327,6 +368,16 @@ def get_backend(backend):
         from backend_tflite import BackendTflite
 
         backend = BackendTflite()
+    elif "ttnn" in backend:
+        from backend_ttnn import BackendTTNN
+
+        backend = BackendTTNN(
+            model_type=backend.split("-", 1)[0],
+            device_id=0,
+            batch_size=SUPPORTED_PROFILES[backend]["max-batchsize"],
+            use_trace=True,
+            use_2cq=True if "-2cq" in backend else False,
+        )
     else:
         raise ValueError("unknown backend: " + backend)
     return backend
@@ -456,6 +507,84 @@ class QueueRunner(RunnerBase):
             worker.join()
 
 
+class TTNN2CQPipelinedRunner(RunnerBase):
+    """
+    Runner that exploits TTNN 2CQ pipelining for improved Offline throughput.
+
+    In each enqueue call, all batches are submitted via predict_async() in a loop
+    without any per-batch sync.  Because CQ1 (DMA) and CQ0 (compute) run
+    independently on the device, the DMA transfer for batch N+1 overlaps with
+    the trace execution for batch N.  A single synchronize_device() at the end
+    waits for all batches, then results are collected and sent to loadgen.
+    """
+
+    def enqueue(self, query_samples):
+        idx = [q.index for q in query_samples]
+        query_id = [q.id for q in query_samples]
+        bs = self.max_batchsize
+
+        # Build batch index ranges.
+        ranges = list(range(0, len(idx), bs))
+
+        if len(ranges) <= 1:
+            # Single batch: no pipeline benefit, fall back to standard path.
+            for i in ranges:
+                data, label = self.ds.get_samples(idx[i: i + bs])
+                self.run_one_item(Item(query_id[i: i + bs], idx[i: i + bs], data, label))
+            return
+
+        # Pipelined path ─────────────────────────────────────────────────────
+        # Interleave get_samples (CPU preprocess) with predict_async (device DMA+compute).
+        # Timeline per iteration (N = batch index):
+        #   CPU:    get_samples(N+1)  ← can run while device processes batch N
+        #   CQ1:    copy(host_N → DRAM)   [overlaps with CQ0 trace of batch N-1]
+        #   CQ0:    reshard(DRAM → L1) + op_event + trace(NB) + cpu_read
+        # The DMA for batch N+1 overlaps with the trace for batch N.
+        items = []
+        pending = []
+        for i in ranges:
+            data, label = self.ds.get_samples(idx[i: i + bs])
+            item = Item(query_id[i: i + bs], idx[i: i + bs], data, label)
+            items.append(item)
+            host_out = self.model.predict_async({self.model.inputs[0]: item.img})
+            pending.append(host_out)
+
+        # 5-event pipeline delay: predict_async returns prev batch; flush_pipeline gets the last.
+        if hasattr(self.model, 'uses_pipeline_delay') and self.model.uses_pipeline_delay():
+            host_last = self.model.flush_pipeline()
+            pending = pending[1:] + [host_last]
+
+        # Single device sync: blocks until every trace + cpu_read is complete.
+        self.model.synchronize()
+
+        # Collect results and send loadgen responses.
+        for item, host_out in zip(items, pending):
+            processed_results = []
+            try:
+                results = self.model.collect(host_out)
+                processed_results = self.post_process(
+                    results, item.content_id, item.label, self.result_dict
+                )
+                if self.take_accuracy:
+                    self.post_process.add_results(processed_results)
+                self.result_timing.append(time.time() - item.start)
+            except Exception as ex:  # pylint: disable=broad-except
+                src = [self.ds.get_item_loc(i) for i in item.content_id]
+                log.error("thread: failed on contentid=%s, %s", src, ex)
+                processed_results = [[]] * len(item.query_id)
+            finally:
+                response_array_refs = []
+                response = []
+                for idx_r, query_id_r in enumerate(item.query_id):
+                    response_array = array.array(
+                        "B", np.array(processed_results[idx_r], np.float32).tobytes()
+                    )
+                    response_array_refs.append(response_array)
+                    bi = response_array.buffer_info()
+                    response.append(lg.QuerySampleResponse(query_id_r, bi[0], bi[1]))
+                lg.QuerySamplesComplete(response)
+
+
 def add_results(
     final_results, name, result_dict, result_list, took, show_accuracy=False
 ):
@@ -534,6 +663,8 @@ def main():
         count=count,
         **kwargs
     )
+    if hasattr(backend, "wrap_dataset"):
+        ds = backend.wrap_dataset(ds)
     # load model to backend
     model = backend.load(args.model, inputs=args.inputs, outputs=args.outputs)
     final_results = {
@@ -577,9 +708,19 @@ def main():
         lg.TestScenario.Server: QueueRunner,
         lg.TestScenario.Offline: QueueRunner,
     }
-    runner = runner_map[scenario](
-        model, ds, args.threads, post_proc=post_proc, max_batchsize=args.max_batchsize
-    )
+    # Use TTNNPipelinedRunner for Offline 2CQ: DMA and compute overlap across batches.
+    if (
+        scenario == lg.TestScenario.Offline
+        and hasattr(model, "supports_async_predict")
+        and model.supports_async_predict()
+    ):
+        runner = TTNN2CQPipelinedRunner(
+            model, ds, args.threads, post_proc=post_proc, max_batchsize=args.max_batchsize
+        )
+    else:
+        runner = runner_map[scenario](
+            model, ds, args.threads, post_proc=post_proc, max_batchsize=args.max_batchsize
+        )
 
     def issue_queries(query_samples):
         runner.enqueue(query_samples)
