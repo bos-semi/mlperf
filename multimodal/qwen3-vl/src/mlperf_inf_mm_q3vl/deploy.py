@@ -7,7 +7,8 @@ import subprocess
 import time
 from abc import ABC, abstractmethod
 from datetime import timedelta  # noqa: TC003
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING
+from typing_extensions import Self
 from urllib.parse import urlparse
 
 import requests

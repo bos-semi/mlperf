@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime
+from datetime import datetime
+try:
+    from datetime import UTC
+except ImportError:
+    from datetime import timezone
+    UTC = timezone.utc
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -35,9 +40,16 @@ def get_log_file_path(key: str, settings: Settings) -> Path:
 def setup_loguru_for_benchmark(
         settings: Settings, verbosity: Verbosity) -> None:
     """Setup the loguru logger for running the benchmark."""
+    level = {
+        "0": "ERROR",
+        "1": "WARNING",
+        "2": "INFO",
+        "3": "DEBUG",
+        "4": "TRACE",
+    }.get(str(verbosity.value).upper(), str(verbosity.value).upper())
     logger.remove()
-    logger.add(sys.stdout, level=verbosity.value.upper())
+    logger.add(sys.stdout, level=level)
     logger.add(
         get_log_file_path(key="benchmark", settings=settings),
-        level=verbosity.value.upper(),
+        level=level,
     )

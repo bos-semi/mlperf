@@ -49,8 +49,8 @@ class SUT:
         self.dtype = dtype
         self.tensor_parallel_size = tensor_parallel_size
 
-        if not torch.cuda.is_available():
-            assert False, "torch gpu is not available, exiting..."
+        # if not torch.cuda.is_available():
+        #     assert False, "torch gpu is not available, exiting..."
 
         self.dataset_path = dataset_path
         self.data_object = Dataset(
@@ -112,7 +112,7 @@ class SUT:
             tik1 = time.time()
 
             input_ids_tensor = [
-                self.data_object.input_ids[q.index] for q in qitem]
+                token_id for q in qitem for token_id in self.data_object.input_ids[q.index]]
             # input_text_tensor = [
             #     self.data_object.input[q.index] for q in qitem]
             # for in_text in input_text_tensor:
@@ -120,7 +120,7 @@ class SUT:
 
             tik2 = time.time()
             outputs = self.model.generate(
-                prompt_token_ids=input_ids_tensor, sampling_params=self.sampling_params
+                {"prompt_token_ids": input_ids_tensor}, sampling_params=self.sampling_params
             )
             pred_output_tokens = []
             for output in outputs:
@@ -162,6 +162,9 @@ class SUT:
             self.model_path,
             dtype=self.dtype,
             tensor_parallel_size=self.tensor_parallel_size,
+            max_num_seqs=1,  # max_batch_size
+            block_size=64,  # KV cache block size
+            override_tt_config={"enable_model_warmup": False}
         )
         log.info("Loaded model")
 
@@ -203,7 +206,7 @@ class SUTServer(SUT):
         dataset_path=None,
         batch_size=None,
         workers=1,
-        tensor_parallel_size=8
+        tensor_parallel_size=1
     ):
 
         super().__init__(
@@ -291,6 +294,10 @@ class SUTServer(SUT):
         self.engine_args = AsyncEngineArgs(
             self.model_path,
             dtype=self.dtype,
-            tensor_parallel_size=self.tensor_parallel_size)
+            tensor_parallel_size=self.tensor_parallel_size,
+            max_num_seqs=1,  # max_batch_size
+            block_size=64,  # KV cache block size
+            override_tt_config={"enable_model_warmup": False},
+        )
         self.model = AsyncLLMEngine.from_engine_args(self.engine_args)
         log.info("Loaded model")

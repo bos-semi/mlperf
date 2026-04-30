@@ -154,3 +154,8 @@ def benchmark_vllm(
             endpoint=vllm,
             random_seed=random_seed,
         )
+
+
+if __name__ == "__main__":  
+    app()
+

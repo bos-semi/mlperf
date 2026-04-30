@@ -7,6 +7,9 @@ import sys
 import requests
 import json
 
+os.environ.setdefault("LOGURU_LEVEL", "ERROR")
+os.environ.setdefault("TT_LOGGER_LEVEL", "ERROR")
+
 sys.path.insert(0, os.getcwd())
 
 logging.basicConfig(level=logging.INFO)
@@ -103,7 +106,7 @@ def get_args():
     parser.add_argument(
         "--tensor-parallel-size",
         type=int,
-        default=8,
+        default=1,
         help="Number of workers to process queries",
     )
     parser.add_argument("--vllm", action="store_true", help="vllm mode")
@@ -165,7 +168,7 @@ def main():
     else:
         raise NotImplementedError
 
-    sut_map = {"offline": SUT, "server": SUTServer, "singlestream": SUTServer}
+    sut_map = {"offline": SUT, "server": SUTServer, "singlestream": SUT}
 
     sut_cls = sut_map[args.scenario.lower()]
 

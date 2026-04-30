@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from enum import StrEnum, auto
+from enum import auto
+try:
+    from enum import StrEnum
+except ImportError:
+    from enum import Enum
+    class StrEnum(str, Enum):
+        pass
 from pathlib import Path
-from typing import Annotated, ClassVar, Self
+from typing import Annotated, ClassVar
+from typing_extensions import Self
 
 import mlperf_loadgen as lg
 from loguru import logger
