@@ -4,16 +4,15 @@ use python_venv(python 3.10.12) at `$TT_METAL_HOME` which created by `./create_v
 ## Git Clone
 
 ```
-cd $TT_METAL_HOME/..
+cd $TT_METAL_HOME
+source env_set.sh
+cd ..
 git clone git@github.com:bos-semi/mlperf.git
 ```
 
 ## Install dependency
 
 ```
-cd $TT_METAL_HOME
-source env_set.sh
-
 pip install pybind11
 pip install mlc-scripts
 ```
@@ -21,7 +20,7 @@ pip install mlc-scripts
 ## Install loadgen
 
 ```
-# install loadgen
+# install loadgen (at $TT_METAL_HOME/..)
 cd mlperf/loadgen
 python setup.py develop --user
 ```
@@ -32,6 +31,7 @@ python setup.py develop --user
 Install vision(classification, detection) model
 
 ```
+# (at $TT_METAL_HOME/..)
 cd mlperf/vision/classification_and_detection
 python setup.py develop
 ```
@@ -41,7 +41,7 @@ python setup.py develop
 #### ImageNet
 
 ```
-cd $MLPERF_ROOT
+# (at $TT_METAL_HOME/../mlperf)
 mlcr get,dataset,imagenet,validation --outdirname=./data -j
 ```
 
@@ -83,7 +83,7 @@ with open(output_path) as f:
 #### COCO2017
 
 ```
-cd $MLPERF_ROOT
+# (at $TT_METAL_HOME/../mlperf)
 mlcr run --tags=get,dataset,object-detection,coco,_val,_2017 --to=./data/coco
 ```
 
