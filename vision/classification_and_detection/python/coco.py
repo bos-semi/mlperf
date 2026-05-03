@@ -145,7 +145,7 @@ class Coco(dataset.Dataset):
             )
         )
 
-        self.label_list = np.array(self.label_list)
+        self.label_list = np.array(self.label_list, dtype=object)
 
     def get_item(self, nr):
         """Get image by number in the list."""
