@@ -94,7 +94,7 @@ run below command at `/vision/classification_and_detection` (if you add `--accur
 #### ResNet50
 
 ```
-python python/main.py --profile vit-ttnn-trace-2cq --scenario Offline --dataset-path mlperf/data/imagenet-2012-val/ --model dummy --threads 1
+python python/main.py --profile resnet50-ttnn-trace-2cq --scenario Offline --dataset-path mlperf/data/imagenet-2012-val/ --model dummy --threads 1
 ```
 
 #### ViT
@@ -106,7 +106,7 @@ python python/main.py --profile vit-ttnn-trace-2cq --scenario Offline --dataset-
 #### YOLOv8s
 
 ```
-python python/main.py --profile vit-ttnn-trace --scenario Offline --dataset-path mlperf/data/coco/ --model dummy --threads 1
+python python/main.py --profile yolo-ttnn-trace --scenario Offline --dataset-path mlperf/data/coco/ --model dummy --threads 1
 ```
 
 ## Step for Language Model
@@ -126,7 +126,8 @@ pip install "openai[aiohttp]"
 #### llama3-1-8b-sample-cnn-eval-5000.uri
 
 ```
-mlcr get,dataset,cnndm,_validation,_edge,_llama3,_mlc,_r2-downloader --outdirname=./data/ -j
+cd mlperf/data
+bash <(curl -s https://raw.githubusercontent.com/mlcommons/r2-downloader/refs/heads/main/mlc-r2-downloader.sh) https://inference.mlcommons-storage.org/metadata/llama3-1-8b-sample-cnn-eval-5000.uri
 ```
 
 #### shopify-catalogue
@@ -142,7 +143,7 @@ mlcr get,dataset,cnndm,_validation,_edge,_llama3,_mlc,_r2-downloader --outdirnam
 run below command at `/language/llama3.1-8b`
 
 ```
-HF_MODEL=meta-llama/Llama-3.1-8B-Instruct python -u main.py --scenario Offline --model-path meta-llama/Llama-3.1-8B-Instruct --dataset-path mlperf/data/llama3-1-8b-sample-cnn-eval-5000.uri/sample_cnn_eval_5000.json --user-conf mlperf/language/llama3.1-8b/user.conf --vllm
+HF_MODEL=meta-llama/Llama-3.1-8B-Instruct python -u main.py --scenario SingleStream --model-path meta-llama/Llama-3.1-8B-Instruct --dataset-path mlperf/data/sample_cnn_eval_5000.json --user-conf mlperf/language/llama3.1-8b/user.conf --vllm
 ```
 
 ### Qwen2.5-VL-7B
