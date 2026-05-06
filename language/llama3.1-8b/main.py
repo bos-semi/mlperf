@@ -144,6 +144,8 @@ scenario_map = {
 def main():
     args = get_args()
 
+    os.environ.setdefault("HF_MODEL", args.model_path)
+
     settings = lg.TestSettings()
     settings.scenario = scenario_map[args.scenario.lower()]
     # mlperf.conf is automatically loaded by the loadgen
@@ -164,11 +166,11 @@ def main():
     log_settings.enable_trace = args.enable_log_trace
 
     if args.vllm:
-        from SUT_VLLM import SUT, SUTServer
+        from SUT_VLLM import SUT, SUTServer, SUTTTNN
     else:
         raise NotImplementedError
 
-    sut_map = {"offline": SUT, "server": SUTServer, "singlestream": SUT}
+    sut_map = {"offline": SUT, "server": SUTServer, "singlestream": SUTTTNN}
 
     sut_cls = sut_map[args.scenario.lower()]
 
@@ -180,7 +182,8 @@ def main():
             dataset_path=args.dataset_path,
             total_sample_count=args.total_sample_count,
             workers=args.num_workers,
-            tensor_parallel_size=args.tensor_parallel_size
+            tensor_parallel_size=args.tensor_parallel_size,
+            first_token_tracking=(args.scenario.lower() == "singlestream"),
         )
     else:
         sut = sut_cls(

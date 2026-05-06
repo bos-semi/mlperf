@@ -143,7 +143,7 @@ bash <(curl -s https://raw.githubusercontent.com/mlcommons/r2-downloader/refs/he
 run below command at `/language/llama3.1-8b`
 
 ```
-HF_MODEL=meta-llama/Llama-3.1-8B-Instruct python -u main.py --scenario SingleStream --model-path meta-llama/Llama-3.1-8B-Instruct --dataset-path mlperf/data/sample_cnn_eval_5000.json --user-conf mlperf/language/llama3.1-8b/user.conf --vllm
+python -u main.py --scenario SingleStream --model-path meta-llama/Llama-3.1-8B-Instruct --dataset-path mlperf/data/sample_cnn_eval_5000.json --user-conf mlperf/language/llama3.1-8b/user.conf --vllm
 ```
 
 ### Qwen2.5-VL-7B
